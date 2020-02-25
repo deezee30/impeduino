@@ -327,7 +327,7 @@ void printCSVHeader(bool cal) {
 
 void printCSVLine(uint8_t iter, int32_t real, int32_t imag,
                   float gain, float phaseShift) {
-    Serial.print(iter + 1);                         Serial.print(F(",\t\t"));   // iteration
+    Serial.print(++iter);                           Serial.print(F(",\t\t"));   // iteration
     Serial.print(FREQ_START + iter * FREQ_INC, 0);  Serial.print(F(",\t\t"));   // point frequency
     Serial.print(real);                             Serial.print(F(",\t\t"));   // resistance (real impedance component)
     Serial.print(imag);                             Serial.print(F(",\t\t"));   // reactance (imag impedance component)
