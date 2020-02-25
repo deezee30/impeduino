@@ -69,11 +69,9 @@ bool AD5933::getTemperature(float *temp) {
         while ((readStatusRegister() & STATUS_TEMP_VALID) != STATUS_TEMP_VALID)
             continue;
 
-        // Read raw temperature from temperature registers
-        // TODO: Block read
+        // Block-read raw temperature values from both temperature registers
         uint8_t rawTemp[2];
-        if (readByte(TEMP_DATA_1, &rawTemp[0]) &&
-            readByte(TEMP_DATA_2, &rawTemp[1])) {
+        if (blockReadBytes(TEMP_DATA_1, 2, rawTemp)) {
 
             // Combine raw temperature bytes into an interger. The ADC
             // returns a 14-bit 2's C value where the 14th bit is a sign
@@ -221,9 +219,9 @@ bool AD5933::getComplexData(int32_t *real, int32_t *imag, uint8_t avgNum) {
     while ((readStatusRegister() & STATUS_DATA_VALID) != STATUS_DATA_VALID)
         continue;
 
-    // Read the two data registers, each having a byte of information
-    uint8_t rawReal[2];
-    uint8_t rawImag[2];
+    // Contains block-read data from 2's C impedance component registers
+    // [0, 1] -> real register, [2, 3] -> imaginary register
+    uint8_t rawImp[4];
 
     uint8_t err = 0;
     int32_t sumReal = 0;
@@ -233,31 +231,17 @@ bool AD5933::getComplexData(int32_t *real, int32_t *imag, uint8_t avgNum) {
         // after 3 fails, escape the loop
         if (err == 3) break;
 
-        // TODO: Block read: Read 4 values at once instead of requesting 4 different
-        // read commands for faster reading. (0x94, 0x95, 0x96, 0x97)
-        if (readByte(REAL_DATA_1, &rawReal[0]) && readByte(REAL_DATA_2, &rawReal[1]) &&
-            readByte(IMAG_DATA_1, &rawImag[0]) && readByte(IMAG_DATA_2, &rawImag[1])) {
+        // Block-read 4 raw real and imaginary impedance components, starting from REAL_DATA_1
+        if (blockReadBytes(REAL_DATA_1, 4, rawImp)) {
 
             if (!setControlMode(CTRL_REPEAT_FREQ)) {
                 err++;
-				continue;
-			}
+                continue;
+            }
 
-            // 32-bit processing
-            /*
-            *real = ((int32_t) rawReal1[0] << 24) |
-                    ((int32_t) rawReal1[1] << 16) |
-                    ((int16_t) rawReal2[0] << 8) |
-                    rawReal2[1];
-            
-            *imag = ((int32_t) rawImag1[0] << 24) |
-                    ((int32_t) rawImag1[1] << 16) |
-                    ((int16_t) rawImag2[0] << 8) |
-                    rawImag2[1];*/
-
-            // 16-bit processing
-            sumReal += ((int32_t) rawReal[0] << 8) | rawReal[1];
-            sumImag += ((int32_t) rawImag[0] << 8) | rawImag[1];
+            // 16-bit processing by 2's complement system
+            sumReal += ((int32_t) rawImp[0] << 8) | rawImp[1];
+            sumImag += ((int32_t) rawImp[2] << 8) | rawImp[3];
 
             if (++n == avgNum) break;
         } else {
@@ -304,15 +288,9 @@ bool AD5933::readBytes(uint8_t address, uint8_t bytes, uint8_t values[]) {
     Serial.println(address, HEX);
 #endif
 
-    Wire.beginTransmission(AD5933_ADDR); // transmit to slave address
-    Wire.write(ADDR_PTR); // write address pointer to slave address
-    Wire.write(address); // write address to slave address
-
-    // Check that transmission is successful
-    uint8_t res = Wire.endTransmission();
-    if (res != I2C_RESULT_SUCCESS) {
-        Serial.print(F("I2C error: "));
-        Serial.println(res);
+    // transmit address pointer to slave address and heck that it's successful
+    if (!writeByte(ADDR_PTR, address)) {
+        Serial.print(F("I2C address pointer error"));
         return false;
     }
 
@@ -336,23 +314,12 @@ bool AD5933::readBytes(uint8_t address, uint8_t bytes, uint8_t values[]) {
     Serial.println(F(" byte(s)."));
 #endif
 
-    // True if success, otherwise false and set value to 0
-    return bytes == count ? true : false;
+    return bytes == count;
 }
 
-// FIXME: Does not work properly - returns improper values?
 bool AD5933::blockReadBytes(uint8_t address, uint8_t blocks, uint8_t bytesPerBlock, uint8_t values[]) {
-    Wire.beginTransmission(AD5933_ADDR); // transmit to slave address
-    Wire.write(BLOCK_READ); // 
-    Wire.write(blocks); // 
-
-    // Check that transmission is successful
-    uint8_t res = Wire.endTransmission();
-    if (res != I2C_RESULT_SUCCESS) {
-        Serial.print(F("I2C error: "));
-        Serial.println(res);
+    if (bytesPerBlock > 32 || blocks > 8)
         return false;
-    }
 
 #if DEBUG
     Serial.print(F("Awaiting "));
@@ -362,6 +329,18 @@ bool AD5933::blockReadBytes(uint8_t address, uint8_t blocks, uint8_t bytesPerBlo
     Serial.print(F(" byte(s) starting from 0x"));
     Serial.println(address, HEX);
 #endif
+
+    // transmit address pointer to slave address and heck that it's successful
+    if (!writeByte(ADDR_PTR, address)) {
+        Serial.print(F("I2C address pointer error"));
+        return false;
+    }
+
+    // transmit the block read command and block size and check that it's successful
+    if (!writeByte(BLOCK_READ, blocks)) {
+        Serial.print(F("I2C block read error."));
+        return false;
+    }
 
     for (int x = 0; x < blocks; x++) {
         Wire.requestFrom((uint8_t) AD5933_ADDR, (uint8_t) bytesPerBlock);
@@ -402,7 +381,6 @@ bool AD5933::writeByte(uint8_t address, uint8_t value) {
     Wire.write(address); // address to slave address
     Wire.write(value); // write byte to slave address
 
-    // Check that transmission is successful
     return Wire.endTransmission() == I2C_RESULT_SUCCESS;
 }
 
