@@ -240,8 +240,8 @@ bool AD5933::getComplexData(int32_t *real, int32_t *imag, uint8_t avgNum) {
             }
 
             // 16-bit processing by 2's complement system
-            sumReal += ((int32_t) rawImp[0] << 8) | rawImp[1];
-            sumImag += ((int32_t) rawImp[2] << 8) | rawImp[3];
+            sumReal += (rawImp[0] << 8) | rawImp[1];
+            sumImag += (rawImp[2] << 8) | rawImp[3];
 
             if (++n == avgNum) break;
         } else {
@@ -290,7 +290,7 @@ bool AD5933::readBytes(uint8_t address, uint8_t bytes, uint8_t values[]) {
 
     // transmit address pointer to slave address and heck that it's successful
     if (!writeByte(ADDR_PTR, address)) {
-        Serial.print(F("I2C address pointer error"));
+        Serial.println(F("I2C address pointer error"));
         return false;
     }
 
@@ -332,13 +332,13 @@ bool AD5933::blockReadBytes(uint8_t address, uint8_t blocks, uint8_t bytesPerBlo
 
     // transmit address pointer to slave address and heck that it's successful
     if (!writeByte(ADDR_PTR, address)) {
-        Serial.print(F("I2C address pointer error"));
+        Serial.println(F("I2C address pointer error"));
         return false;
     }
 
     // transmit the block read command and block size and check that it's successful
     if (!writeByte(BLOCK_READ, blocks)) {
-        Serial.print(F("I2C block read error."));
+        Serial.println(F("I2C block read error."));
         return false;
     }
 

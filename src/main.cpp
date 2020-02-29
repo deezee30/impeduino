@@ -66,7 +66,8 @@ void setup() {
           AD5933::setStartFrequency(FREQ_START) &&
           AD5933::setIncrementFrequency(FREQ_INC) &&
           AD5933::setNumberIncrements(INC_NUM) &&
-          AD5933::setPGAGain(PGA_GAIN_X1))) {
+          AD5933::setPGAGain(PGA_GAIN_X1) &&
+          AD5933::setSettlingCycles(15, NUM_ST_CYCLES_DEFAULT))) {
         Serial.println(F("Failed in initialization!"));
         while (true) continue;
     }
@@ -235,12 +236,14 @@ bool frequencySweep(uint8_t n, uint8_t avgNum, bool calibration, bool print) {
 
     int32_t realPoint;
     int32_t imagPoint;
+    float magPoint;
+    float phasePoint;
 
-    // Perform the sweep. Make sure we don't exceed n.
+    // Perform the sweep
     uint8_t i = 0;
     while ((AD5933::readStatusRegister() & STATUS_SWEEP_DONE) != STATUS_SWEEP_DONE) {
         // Make sure we aren't exceeding the bounds of our buffer
-        if (i >= n)
+        if (i == n)
             continue;
 
         // Get the data for this frequency point and store it
@@ -250,20 +253,21 @@ bool frequencySweep(uint8_t n, uint8_t avgNum, bool calibration, bool print) {
             return false;
         }
 
-        float phase = complexPhase(realPoint, imagPoint);
+        magPoint = complexMagnitude(realPoint, imagPoint);
+        phasePoint = complexPhase(realPoint, imagPoint);
 
         // If calibrating, calculate the gain factor and phase shift for current point
         if (calibration) {
-            gain[i] = float(1. / (REF_RESIST * complexMagnitude(realPoint, imagPoint)));
-            phaseShift[i] = phase;
+            gain[i] = float(1. / (REF_RESIST * magPoint));
+            phaseShift[i] = phasePoint;
         } else {
             // Otherwise, apply calibration gain factor and phase shift
-            int32_t actualMag = float(1. / (gain[i] * complexMagnitude(realPoint, imagPoint)));
-            phase -= phaseShift[i];
+            magPoint = float(1. / (gain[i] * magPoint));
+            phasePoint -= phaseShift[i];
 
             // Adjust recorded real and imaginary points to new calibrated values
-            realPoint = complexReal(actualMag, phase);
-            imagPoint = complexImaginary(actualMag, phase);
+            realPoint = complexReal(magPoint, phasePoint);
+            imagPoint = complexImaginary(magPoint, phasePoint);
         }
 
         // If printing is enabled, print in CSV format
