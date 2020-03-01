@@ -58,6 +58,9 @@ void setup() {
     Wire.begin();
     Serial.begin(9600);
 
+    // Run the clock at 400 kHz (fast mode) instead of 100 kHz (standard mode)
+    Wire.setClock(400000);
+
     Serial.println(F("\n-------- Start --------"));
 
     // Perform initial configuration. Fail if any one of these fail
