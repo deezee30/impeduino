@@ -301,7 +301,7 @@ float complexMagnitude(float real, float imaginary) {
 }
 
 float complexPhase(float real, float imaginary) {
-    return atan2(abs(imaginary), abs(real));
+    return atan2(imaginary, real);
 }
 
 float complexReal(float magnitude, float phase) {
