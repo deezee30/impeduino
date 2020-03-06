@@ -301,19 +301,7 @@ float complexMagnitude(float real, float imaginary) {
 }
 
 float complexPhase(float real, float imaginary) {
-    float phase = atan2(abs(imaginary), abs(real)); // raw angle
-
-    if (real >= 0 && imaginary >= 0) {
-        ; // do nothing                             // 1st quadrant: abs. angle = raw phase
-    } else if (real < 0 && imaginary > 0) {
-        phase = PI - phase;                         // 2nd quadrant: abs. angle = 180 - phase
-    } else if (real < 0 && imaginary < 0) {
-        phase = PI + phase;                         // 3rd quadrant: abs. angle = 180 + phase
-    } else {
-        phase = 2 * PI - phase;                     // 4th quadrant: abs. angle = 360 - phase
-    }
-
-    return phase;
+    return atan2(abs(imaginary), abs(real));
 }
 
 float complexReal(float magnitude, float phase) {
