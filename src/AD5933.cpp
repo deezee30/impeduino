@@ -141,7 +141,7 @@ bool AD5933::setSettlingCycles(uint16_t nstc, uint8_t multiplier) {
 bool AD5933::setStartFrequency(uint32_t start) {
     // Page 24 of the Datasheet gives the following formula to represent the
     // start frequency.
-    uint32_t freqHex = (start / (clockSpeed / 4.F)) * pow(2, 27);
+    uint32_t freqHex = start * pow(2, 29) / clockSpeed;
     if (freqHex > 0xFFFFFF) {
         return false; // overflow
     }
@@ -160,7 +160,7 @@ bool AD5933::setStartFrequency(uint32_t start) {
 bool AD5933::setIncrementFrequency(uint32_t increment) {
     // Page 25 of the Datasheet gives the following formula to represent the
     // increment frequency.
-    uint32_t freqHex = (increment / (clockSpeed / 4.F)) * pow(2, 27);
+    uint32_t freqHex = increment * pow(2, 29) / clockSpeed;
     if (freqHex > 0xFFFFFF) {
         return false;  // overflow
     }
@@ -234,16 +234,18 @@ bool AD5933::getComplexData(int32_t *real, int32_t *imag, uint8_t avgNum) {
         // Block-read 4 raw real and imaginary impedance components, starting from REAL_DATA_1
         if (blockReadBytes(REAL_DATA_1, 4, rawImp)) {
 
-            if (!setControlMode(CTRL_REPEAT_FREQ)) {
-                err++;
-                continue;
-            }
-
             // 16-bit processing by 2's complement system
             sumReal += (rawImp[0] << 8) | rawImp[1];
             sumImag += (rawImp[2] << 8) | rawImp[3];
 
-            if (++n == avgNum) break;
+            if (++n == avgNum) {
+                break;
+            } else {
+                // repeat frequency
+                if (!setControlMode(CTRL_REPEAT_FREQ)) {
+                    err++;
+                }
+            }
         } else {
             // if fail, then skip this loop and move to the next one
             err++;

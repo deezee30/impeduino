@@ -14,7 +14,7 @@
 const float     FREQ_START  = 10000;            // linear frequency sweep start (Hz) [5 kHz < f < 100 kHz]
 const float     FREQ_INC    = 1000;             // distance between successive frequency points (Hz)
 const uint8_t   INC_NUM     = 70;               // number of increments along the sweep [< 511]
-const uint16_t  REF_RESIST  = 22000;            // resistance used during calibration (Ohms)
+const uint16_t  REF_RESIST  = 2700;             // resistance used during calibration (Ohms)
 const uint8_t   SWEEP_NUM   = 1;                // sweep each point multiple times, for increased accuracy
 
 // Variables for internal use
@@ -247,13 +247,13 @@ bool frequencySweep(uint8_t n, uint8_t avgNum, bool calibration, bool print) {
     while ((AD5933::readStatusRegister() & STATUS_SWEEP_DONE) != STATUS_SWEEP_DONE) {
         // Make sure we aren't exceeding the bounds of our buffer
         if (i == n)
-            continue;
+            break;
 
         // Get the data for this frequency point and store it
         if (!AD5933::getComplexData(&realPoint, &imagPoint, avgNum)) {
             Serial.print(F("Could not get raw frequency data for loop "));
             Serial.println(i);
-            return false;
+            break;
         }
 
         magPoint = complexMagnitude(realPoint, imagPoint);
@@ -322,7 +322,7 @@ void printCSVHeader(bool cal) {
 
 void printCSVLine(uint8_t iter, int32_t real, int32_t imag,
                   float gain, float phaseShift) {
-    Serial.print(++iter);                           Serial.print(F(",\t\t"));   // iteration
+    Serial.print(iter + 1);                         Serial.print(F(",\t\t"));   // iteration
     Serial.print(FREQ_START + iter * FREQ_INC, 0);  Serial.print(F(",\t\t"));   // point frequency
     Serial.print(real);                             Serial.print(F(",\t\t"));   // resistance (real impedance component)
     Serial.print(imag);                             Serial.print(F(",\t\t"));   // reactance (imag impedance component)
