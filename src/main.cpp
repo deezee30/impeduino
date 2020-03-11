@@ -13,7 +13,7 @@
 // AD5933 configuration
 const float     FREQ_START  = 10000;            // linear frequency sweep start (Hz) [5 kHz < f < 100 kHz]
 const float     FREQ_INC    = 1000;             // distance between successive frequency points (Hz)
-const uint8_t   INC_NUM     = 70;               // number of increments along the sweep [< 511]
+const uint8_t   INC_NUM     = 71;               // number of increments along the sweep [< 511]
 const uint16_t  REF_RESIST  = 2700;             // resistance used during calibration (Ohms)
 const uint8_t   SWEEP_NUM   = 1;                // sweep each point multiple times, for increased accuracy
 
