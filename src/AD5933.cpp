@@ -57,7 +57,7 @@ bool AD5933::reset() {
 
 bool AD5933::getTemperature(float *temp) {
     // Set temperature mode
-    if (!setControlMode(TEMP_MEASURE))
+    if (!setControlMode(CTRL_TEMP_MEASURE))
         return false;
 
     // Wait for a valid temperature to be ready
@@ -93,10 +93,9 @@ bool AD5933::getTemperature(float *temp) {
 bool AD5933::setClockSource(uint8_t source) {
     // Determine what source was selected and set it appropriately
     switch (source) {
-        case CLOCK_EXTERNAL:
-            return writeByte(CTRL_REG2, CTRL_CLOCK_EXTERNAL);
-        case CLOCK_INTERNAL:
-            return writeByte(CTRL_REG2, CTRL_CLOCK_INTERNAL);
+        case CTRL_CLOCK_EXTERNAL:
+        case CTRL_CLOCK_INTERNAL:
+            return writeByte(CTRL_REG2, source);
         default:
             return false;
     }
@@ -104,7 +103,7 @@ bool AD5933::setClockSource(uint8_t source) {
 
 bool AD5933::setInternalClock(bool internal) {
     // This function is essentially a wrapper for setClockSource()
-    return setClockSource(internal ? CLOCK_INTERNAL : CLOCK_EXTERNAL);
+    return setClockSource(internal ? CTRL_CLOCK_INTERNAL : CTRL_CLOCK_EXTERNAL);
 }
 
 // No. of settline time cycles
@@ -194,17 +193,17 @@ bool AD5933::setPGAGain(uint8_t gain) {
     val &= 0xFE;
 
     // Determine what gain factor was selected
-    if (gain == PGA_GAIN_X1 || gain == 1) {
+    if (gain == CTRL_PGA_GAIN_X1 || gain == 1) {
         // Set PGA gain to x1 in CTRL_REG1
-        val |= PGA_GAIN_X1;
-        return writeByte(CTRL_REG1, val);
-    } else if (gain == PGA_GAIN_X5 || gain == 5) {
+        val |= CTRL_PGA_GAIN_X1;
+    } else if (gain == CTRL_PGA_GAIN_X5 || gain == 5) {
         // Set PGA gain to x5 in CTRL_REG1
-        val |= PGA_GAIN_X5;
-        return writeByte(CTRL_REG1, val);
+        val |= CTRL_PGA_GAIN_X5;
     } else {
         return false;
     }
+
+    return writeByte(CTRL_REG1, val);
 }
 
 bool AD5933::getComplexData(int32_t *real, int32_t *imag, uint8_t avgNum) {
@@ -255,19 +254,6 @@ bool AD5933::getComplexData(int32_t *real, int32_t *imag, uint8_t avgNum) {
     *imag = sumImag / n;
 
     return true;
-}
-
-bool AD5933::setPowerMode(uint8_t level) {
-    switch (level) {
-        case POWER_ON:
-            return setControlMode(CTRL_NO_OPERATION);
-        case POWER_STANDBY:
-            return setControlMode(CTRL_STANDBY_MODE);
-        case POWER_DOWN:
-            return setControlMode(CTRL_POWER_DOWN_MODE);
-        default:
-            return false;
-    }
 }
 
 // Read a byte using the address pointer register.

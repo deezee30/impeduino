@@ -58,23 +58,10 @@
 // Block read and write
 #define BLOCK_WRITE                 0b10100000
 #define BLOCK_READ                  0b10100001
-// Temperature measuring
-#define TEMP_MEASURE                CTRL_TEMP_MEASURE
-#define TEMP_NO_MEASURE             CTRL_NO_OPERATION
-// Clock sources
-#define CLOCK_INTERNAL              CTRL_CLOCK_INTERNAL
-#define CLOCK_EXTERNAL              CTRL_CLOCK_EXTERNAL
-// PGA gain options
-#define PGA_GAIN_X1                 CTRL_PGA_GAIN_X1
-#define PGA_GAIN_X5                 CTRL_PGA_GAIN_X5
 // Number of settling time cycles
 #define NUM_ST_CYCLES_DEFAULT       0b00000000              // [D10 D9] => [0 0]
 #define NUM_ST_CYCLES_X2            0b00000001              // [D10 D9] => [0 1]
 #define NUM_ST_CYCLES_X4            0b00000011              // [D10 D9] => [1 1]
-// Power modes
-#define POWER_STANDBY               CTRL_STANDBY_MODE
-#define POWER_DOWN                  CTRL_POWER_DOWN_MODE
-#define POWER_ON                    CTRL_NO_OPERATION
 // I2C result
 #define I2C_RESULT_SUCCESS          0                       // I2C transmission successful
 #define I2C_RESULT_DATA_TOO_LONG    1                       // I2C error: data too long
@@ -106,9 +93,6 @@ class AD5933 {
 
     // Set control mode register CTRL_REG1
     static bool setControlMode(uint8_t);
-
-    // Power mode
-    static bool setPowerMode(uint8_t);
 
     // Clock
     static bool setClockSource(uint8_t);

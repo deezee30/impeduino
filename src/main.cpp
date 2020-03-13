@@ -69,7 +69,7 @@ void setup() {
           AD5933::setStartFrequency(FREQ_START) &&
           AD5933::setIncrementFrequency(FREQ_INC) &&
           AD5933::setNumberIncrements(INC_NUM) &&
-          AD5933::setPGAGain(PGA_GAIN_X1) &&
+          AD5933::setPGAGain(CTRL_PGA_GAIN_X1) &&
           AD5933::setSettlingCycles(15, NUM_ST_CYCLES_DEFAULT))) {
         Serial.println(F("Failed in initialization!"));
         while (true) continue;
@@ -227,7 +227,7 @@ bool frequencySweep(uint8_t n, bool calibration, bool print) {
 bool frequencySweep(uint8_t n, uint8_t avgNum, bool calibration, bool print) {
     // Begin by issuing a sequence of commands
     // If the commands aren't taking hold, add a brief delay
-    if (!(AD5933::setPowerMode(POWER_STANDBY) &&             // place in standby
+    if (!(AD5933::setControlMode(CTRL_STANDBY_MODE) &&       // place in standby
           AD5933::setControlMode(CTRL_INIT_START_FREQ) &&    // init start freq
           AD5933::setControlMode(CTRL_START_FREQ_SWEEP))) {  // begin frequency sweep
         Serial.println(F("Could not initialize frequency sweep."));
@@ -293,7 +293,7 @@ bool frequencySweep(uint8_t n, uint8_t avgNum, bool calibration, bool print) {
     if (print) printCSVFooter(i);
 
     // Set AD5933 power mode to standby when finished
-    return calibrated = AD5933::setPowerMode(POWER_STANDBY);
+    return calibrated = AD5933::setControlMode(CTRL_STANDBY_MODE);
 }
 
 float complexMagnitude(float real, float imaginary) {
