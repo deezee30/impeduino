@@ -131,7 +131,6 @@ class AD5933 {
     static bool setPGAGain(uint8_t);
 
     // Temperature measurement
-    static bool enableTemperature(uint8_t);
     static bool getTemperature(float*);
     static bool getTemperatureExperimental(float*);
 

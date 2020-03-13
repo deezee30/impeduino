@@ -55,43 +55,36 @@ bool AD5933::reset() {
     return writeByte(CTRL_REG2, val);
 }
 
-bool AD5933::enableTemperature(uint8_t enable) {
-    // If enable, set temp measure bits. If disable, reset to no operation.
-    return setControlMode(enable == TEMP_MEASURE ?
-                          CTRL_TEMP_MEASURE :
-                          CTRL_NO_OPERATION);
-}
-
 bool AD5933::getTemperature(float *temp) {
     // Set temperature mode
-    if (enableTemperature(TEMP_MEASURE)) {
-        // Wait for a valid temperature to be ready
-        while ((readStatusRegister() & STATUS_TEMP_VALID) != STATUS_TEMP_VALID)
-            continue;
+    if (!setControlMode(TEMP_MEASURE))
+        return false;
 
-        // Block-read raw temperature values from both temperature registers
-        uint8_t rawTemp[2];
-        if (blockReadBytes(TEMP_DATA_1, 2, rawTemp)) {
+    // Wait for a valid temperature to be ready
+    while ((readStatusRegister() & STATUS_TEMP_VALID) != STATUS_TEMP_VALID)
+        continue;
 
-            // Combine raw temperature bytes into an interger. The ADC
-            // returns a 14-bit 2's C value where the 14th bit is a sign
-            // bit. As such, we only need to keep the bottom 13 bits.
-            int16_t tempVal = (int16_t(rawTemp[0]) << 8 | rawTemp[1]) & 0x1FFF;
+    // Block-read raw temperature values from both temperature registers
+    uint8_t rawTemp[2];
+    if (blockReadBytes(TEMP_DATA_1, 2, rawTemp)) {
 
-            // Convert into celcius using the formula given in the
-            // datasheet. There is a different formula depending on the sign
-            // bit, which is the 5th bit of the byte in TEMP_DATA_1.
-            if ((rawTemp[0] & (1 << 5)) == 0) {
-            // if (rawTempVal <= 0x1FFF) { // also correct
-                // Positive (msb = 0)
-                *temp = tempVal / 32.0;
-            } else {
-                // Negative (msb = 1)
-                *temp = (tempVal - 16384) / 32.0;
-            }
+        // Combine raw temperature bytes into an interger. The ADC
+        // returns a 14-bit 2's C value where the 14th bit is a sign
+        // bit. As such, we only need to keep the bottom 13 bits.
+        int16_t tempVal = (int16_t(rawTemp[0]) << 8 | rawTemp[1]) & 0x1FFF;
 
-            return true;
+        // Convert into celcius using the formula given in the
+        // datasheet. There is a different formula depending on the sign
+        // bit, which is the 5th bit of the byte in TEMP_DATA_1.
+        if (bitRead(rawTemp[0], 5) == 0) {
+            // Positive (msb = 0)
+            *temp = tempVal / 32.0;
+        } else {
+            // Negative (msb = 1)
+            *temp = (tempVal - 16384) / 32.0;
         }
+
+        return true;
     }
 
     return false;
