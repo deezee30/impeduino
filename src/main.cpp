@@ -10,18 +10,24 @@
 #include "AD5933.h"
 #include "Wire.h"
 
-// AD5933 configuration
-const float     FREQ_START  = 10000;            // linear frequency sweep start (Hz) [5 kHz < f < 100 kHz]
-const float     FREQ_INC    = 1000;             // distance between successive frequency points (Hz)
+#define STIM_OUT 13
+
+// AD5933 program parameters
+const float     FREQ_START  = 10000.F;          // linear frequency sweep start (Hz) [5 kHz < f < 100 kHz]
+const float     FREQ_INC    = 1000.F;           // distance between successive frequency points (Hz)
 const uint8_t   INC_NUM     = 71;               // number of increments along the sweep [< 511]
 const uint16_t  REF_RESIST  = 2700;             // resistance used during calibration (Ohms)
 const uint8_t   SWEEP_NUM   = 1;                // sweep each point multiple times, for increased accuracy
+// PWM stimulation parameters
+const uint32_t  STIM_FREQ   = 10000;            // stimulation pulse frequency (Hz)
+const float     STIM_LENGTH = 0.500F;           // total duration of stimulation signal (s)
+const float     STIM_POWER  = 0.5;              // PWM duty cycle of the stimulation signal
 
 // Variables for internal use
-boolean         cache       = false;            // whether or not to store frequency sweep data
+bool            cache       = false;            // whether or not to store frequency sweep data
 float           temperature = 0.F;              // measured temperature of the AD5933
-boolean         calibrated  = false;            // whether or not multi-point gain is calculated yet
-boolean         swept       = false;            // whether or not calibrated frequency sweep was performed yet
+bool            calibrated  = false;            // whether or not multi-point gain is calculated yet
+bool            swept       = false;            // whether or not calibrated frequency sweep was performed yet
 String          command;                        // serial input command for AD5933 function
 uint32_t        lastMillis;                     // used for timing heavy operations (for single-threaded use only)
 
@@ -39,6 +45,8 @@ bool frequencySweep(uint8_t n,                  // perform a frequency sweep and
 bool frequencySweep(uint8_t n,                  // similar as above, but each point gets measured once
                     bool calibration,           
                     bool print);
+bool stimulate(uint32_t, float, float);         // stimulate neurons via PWM with frequency, duration and duty cycle
+bool stimulate(float, float, float);            // stimulate neurons via PWM with high, low and overall durations
 float complexMagnitude(float, float);           // computes impedance magnitude from real and imaginary components
 float complexPhase(float, float);               // computes impedance phase angle from real and imaginary components
 float complexReal(float, float);                // computes real component from impedance magnitude and phase angle
@@ -54,6 +62,9 @@ void startTimer();                              // starts timing an operation (u
 uint32_t stopTimer();                           // stops timing an operation (used for debugging)
 
 void setup() {
+    // Set up digital neuron stimulation voltage output
+    pinMode(STIM_OUT, OUTPUT);
+
     // Join I2C bus, initialise Wire library and start serial communication at 9600 bps
     Wire.begin();
     Serial.begin(9600);
@@ -71,8 +82,8 @@ void setup() {
           AD5933::setNumberIncrements(INC_NUM) &&
           AD5933::setPGAGain(CTRL_PGA_GAIN_X1) &&
           AD5933::setSettlingCycles(15, NUM_ST_CYCLES_DEFAULT))) {
-        Serial.println(F("Failed in initialization!"));
-        while (true) continue;
+        //Serial.println(F("Failed in initialization!"));
+        //while (true) continue;
     }
 
     // Decide whether or not to store the swept impedance data.
@@ -194,15 +205,24 @@ void loop() {
                 return;
             }
 
-            // TODO: Method of exporting CSV to file?
-            // TODO: Perhaps make a serial monitor listener program, parse and save
-            
             printCSVHeader(!swept);
             uint8_t i = 0;
             for (; i < INC_NUM; i++) {
                 printCSVLine(i, real[i], imag[i], gain[i], phaseShift[i]);
             }
             printCSVFooter(i);
+
+        // Handle tissue stimulation
+        } else if (command.equals(F("stim"))) {
+
+            startTimer();
+
+            if (!stimulate(STIM_FREQ, STIM_LENGTH, STIM_POWER)) {
+                Serial.println(F("Stimulation failed. Use different parameters."));
+                return;
+            }
+
+            stopTimer();
 
         // Handle incorrect commands
         } else {
@@ -236,6 +256,10 @@ bool frequencySweep(uint8_t n, uint8_t avgNum, bool calibration, bool print) {
 
     // If printing is enabled, print the CSV header
     if (print) printCSVHeader(calibration);
+
+#if DEBUG
+    Serial.print(F("[ "));
+#endif
 
     int32_t realPoint;
     int32_t imagPoint;
@@ -287,13 +311,81 @@ bool frequencySweep(uint8_t n, uint8_t avgNum, bool calibration, bool print) {
         // Increment the frequency and loop index
         i++;
         AD5933::setControlMode(CTRL_INCREMENT_FREQ);
+
+#if DEBUG
+        // Update progress at 10% intervals
+        if (fmod(i, 0.1 * n) == 0) {
+            Serial.print(F("="));
+        }
+#endif
     }
+
+#if DEBUG
+    Serial.print(F(" ]"));
+#endif
 
     // If printing is enabled, finish by printing the CSV footer
     if (print) printCSVFooter(i);
 
     // Set AD5933 power mode to standby when finished
     return calibrated = AD5933::setControlMode(CTRL_STANDBY_MODE);
+}
+
+// The duty cycle can be represented as the ratio of high to low duration
+// portions of PWN signal
+bool stimulate(uint32_t frequency, float duration, float dutyCycle = 0.5) {
+    if (dutyCycle < 0 || dutyCycle > 1) return false;
+    if (frequency > 1E6) return false; // Allow max. 1 MHz frequency
+
+    // Convert duty cycle to absolute durations of high and low voltage output
+    // The period of the pulse is the sum of high and low state lengths
+    float period = 1.F / frequency;
+    return stimulate(dutyCycle * period, (1 - dutyCycle) * period, duration);
+}
+
+bool stimulate(float high, float low, float duration) {
+    // Max. pulse width of 4294 seconds to avoid future microsecond overflow
+    if (high > 4294 || low > 4294) return false;
+    if (high < 0 || low < 0 || duration <= 0) return false;
+
+    // Number of pulses to generate
+    uint32_t fin = floor(duration / (high + low));
+
+    // Convert high and low timings to micros
+    uint32_t highMicros = floor(high * 1E6);
+    uint32_t lowMicros = floor(low * 1E6);
+
+#if DEBUG
+    Serial.print(F("Stimulating for "));
+    Serial.print(fin);
+    Serial.println(F(" pulses..."));
+
+    Serial.print(F("[ "));
+#endif
+
+    uint32_t i = 0;
+    while (i++ < fin) {
+        // High
+        digitalWrite(STIM_OUT, HIGH);
+        delayMicroseconds(highMicros);
+
+        // Low
+        digitalWrite(STIM_OUT, LOW);
+        delayMicroseconds(lowMicros);
+
+#if DEBUG
+        // Update progress at 10% intervals
+        if (fmod(i, 0.1 * fin) == 0) {
+            Serial.print(F("="));
+        }
+#endif
+    }
+
+#if DEBUG
+    Serial.println(F(" ]"));
+#endif
+
+    return true;
 }
 
 float complexMagnitude(float real, float imaginary) {
@@ -344,6 +436,7 @@ void showCommands() {
     Serial.println(F("- cal\t\tCalculate impedance gain factor (Calibration)."));
     Serial.println(F("- sweep\t\tPerform a frequency sweep."));
     Serial.println(F("- exp\t\tExport to CSV file."));
+    Serial.println(F("- stim\t\tOutput pulsatile stimulation"));
 }
 
 void startTimer() {
