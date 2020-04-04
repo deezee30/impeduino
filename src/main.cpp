@@ -10,7 +10,7 @@
 #include "AD5933.h"
 #include "Wire.h"
 
-#define STIM_OUT 13
+#define STIM_OUT 13 // PWM LED
 
 // AD5933 program parameters
 const float     FREQ_START  = 10000.F;          // linear frequency sweep start (Hz) [5 kHz < f < 100 kHz]
@@ -61,6 +61,9 @@ void showCommands();                            // prints a list of available co
 void startTimer();                              // starts timing an operation (used for debugging)
 uint32_t stopTimer();                           // stops timing an operation (used for debugging)
 
+/**
+ * Initialisation
+ */
 void setup() {
     // Set up digital neuron stimulation voltage output
     pinMode(STIM_OUT, OUTPUT);
@@ -82,8 +85,8 @@ void setup() {
           AD5933::setNumberIncrements(INC_NUM) &&
           AD5933::setPGAGain(CTRL_PGA_GAIN_X1) &&
           AD5933::setSettlingCycles(15, NUM_ST_CYCLES_DEFAULT))) {
-        //Serial.println(F("Failed in initialization!"));
-        //while (true) continue;
+        Serial.println(F("Failed in initialization!"));
+        while (true) continue;
     }
 
     // Decide whether or not to store the swept impedance data.
@@ -107,6 +110,9 @@ void setup() {
     delay(50);
 }
 
+/**
+ * Main program tick
+ */
 void loop() {
     delay(50);
 
@@ -217,6 +223,7 @@ void loop() {
 
             startTimer();
 
+            // Stimulate material with default parameters
             if (!stimulate(STIM_FREQ, STIM_LENGTH, STIM_POWER)) {
                 Serial.println(F("Stimulation failed. Use different parameters."));
                 return;
@@ -234,16 +241,49 @@ void loop() {
     }
 }
 
+/**
+ * Perform a frequency sweep and record complex impedance data across the sweep
+ * for n points.
+ * 
+ * If used for calibration, raw real and imaginary numbers are used for gain
+ * factor and phase shift calculation. Otherwise, the gain factor and phase
+ * shift are applied to the new sweep data.
+ * 
+ * Optionally, the data can be printed as it is being processed if @param print
+ * is set to @code{true}.
+ * 
+ * @param n           number of points in the sweep
+ * @param calibration whether or not the sweep is used for calibrating the
+ *                    system (as opposed to doing the actual measurement)
+ * @param print       whether or not to print data to serial during sweep
+ * @return @code{true} if successful, @code{false} if not
+ * 
+ * @see frequencySweep(uint8_t, uint8_t, bool, bool) if data is to be measured
+ * multiple times per point and averaged out.
+ */
 bool frequencySweep(uint8_t n, bool calibration, bool print) {
     return frequencySweep(n, 1, calibration, print);
 }
 
-// perform a frequency sweep and record complex impedance data across
-// the sweep for n points. If used for calibration, raw real and
-// imaginary numbers are used for gain factor and phase shift calculation.
-// Otherwise, the gain factor and phase shift are applied to the new sweep data.
-// Optionally, the data can be printed as it is being processed if print == true.
-// The data can be measured multiple times per point for an average, set by avgNum.
+/**
+ * Perform a frequency sweep and record complex impedance data across the sweep
+ * for n points.
+ * 
+ * If used for calibration, raw real and imaginary numbers are used for gain
+ * factor and phase shift calculation. Otherwise, the gain factor and phase
+ * shift are applied to the new sweep data.
+ * 
+ * Optionally, the data can be printed as it is being processed if @param print
+ * is set to @code{true}.
+ * 
+ * @param n           number of points in the sweep
+ * @param avgNum      amount of measurements to take for each complex impedance
+ *                    point for averaged out results
+ * @param calibration whether or not the sweep is used for calibrating the
+ *                    system (as opposed to doing the actual measurement)
+ * @param print       whether or not to print data to serial during sweep
+ * @return @code{true} if successful, @code{false} if not
+ */
 bool frequencySweep(uint8_t n, uint8_t avgNum, bool calibration, bool print) {
     // Begin by issuing a sequence of commands
     // If the commands aren't taking hold, add a brief delay
@@ -331,8 +371,22 @@ bool frequencySweep(uint8_t n, uint8_t avgNum, bool calibration, bool print) {
     return calibrated = AD5933::setControlMode(CTRL_STANDBY_MODE);
 }
 
-// The duty cycle can be represented as the ratio of high to low duration
-// portions of PWN signal
+/**
+ * Initiates a Pulse Width Modulation (PWM) signal to stimulate tissue. Wired to
+ * @code{STIM_OUT} to produce a digital signal.
+ * 
+ * The duty cycle can be represented as the ratio of high to low duration
+ * portions of PWN signal.
+ * 
+ * Processed in microseconds, so timings are accurate to the nearest microsecond. 
+ * 
+ * @param frequency frequency of signal in Hz. Max. 1 MHz
+ * @param duration  total stimulation length in seconds
+ * @param dutyCycle ratio of durations of pin state high to low during a single
+ *                  cycle, such that [0 < dutyCycle < 1]. Default is 0.5
+ * @return @code{true} if successful, @code{false} if not
+ * @see stimulate(float, float, duration) for alternative inputs
+ */
 bool stimulate(uint32_t frequency, float duration, float dutyCycle = 0.5) {
     if (dutyCycle < 0 || dutyCycle > 1) return false;
     if (frequency > 1E6) return false; // Allow max. 1 MHz frequency
@@ -343,6 +397,22 @@ bool stimulate(uint32_t frequency, float duration, float dutyCycle = 0.5) {
     return stimulate(dutyCycle * period, (1 - dutyCycle) * period, duration);
 }
 
+/**
+ * Initiates a Pulse Width Modulation (PWM) signal to stimulate tissue. Wired to
+ * @code{STIM_OUT} to produce a digital signal.
+ * 
+ * The duty cycle can be represented as the ratio of high to low duration
+ * portions of PWN signal.
+ * 
+ * Processed in microseconds, so timings are accurate to the nearest microsecond.
+ * Maximum @param high and @param low values set to 4294 seconds so as to avoid
+ * microsecond overflow.
+ * 
+ * @param high     duration of pin state set to high, in seconds. Max. 4294 s
+ * @param low      duration of pin state set to low, in seconds. Max. 4294 s
+ * @param duration total stimulation length in seconds
+ * @return @code{true} if successful, @code{false} if not
+ */
 bool stimulate(float high, float low, float duration) {
     // Max. pulse width of 4294 seconds to avoid future microsecond overflow
     if (high > 4294 || low > 4294) return false;
@@ -388,22 +458,57 @@ bool stimulate(float high, float low, float duration) {
     return true;
 }
 
-float complexMagnitude(float real, float imaginary) {
-    return sqrt(square(real) + square(imaginary));
+/**
+ * Returns the magnitude of a complex impedance.
+ * 
+ * @param real real component of a complex impedance (Ohms)
+ * @param imag imaginary component of a complex impedance (Ohms)
+ * @return the magnitude of a complex impedance (Ohms)
+ */
+float complexMagnitude(float real, float imag) {
+    return sqrt(square(real) + square(imag));
 }
 
-float complexPhase(float real, float imaginary) {
-    return atan2(imaginary, real);
+/**
+ * Returns the phase angle of a complex impedance via tan2 method.
+ * 
+ * @param real real component of a complex impedance (Ohms)
+ * @param imag imaginary component of a complex impedance (Ohms)
+ * @return the phase angle of a complex impedance (rad)
+ */
+float complexPhase(float real, float imag) {
+    return atan2(imag, real);
 }
 
+/**
+ * Returns the real component of a polar impedance.
+ * 
+ * @param magnitude magnitude of a polar impedance (Ohms)
+ * @param phase phase angle of a polar impedance (rad)
+ * @return real component of a polar impedance (Ohm)
+ */
 float complexReal(float magnitude, float phase) {
     return magnitude * cos(phase);
 }
 
+/**
+ * Returns the imaginary component of a polar impedance.
+ * 
+ * @param magnitude magnitude of a polar impedance (Ohms)
+ * @param phase phase angle of a polar impedance (rad)
+ * @return imaginary component of a polar impedance (Ohm)
+ */
 float complexImaginary(float magnitude, float phase) {
     return magnitude * sin(phase);
 }
 
+/**
+ * Prints table header of comma-separated value (CSV) format to serial console.
+ * Also compatible with tab-separated value (TSV) format.
+ * 
+ * @param cal whether or not the table will contain calibration data as opposed
+ *            to measurement data
+ */
 void printCSVHeader(bool cal) {
     Serial.print(F("================= "));
     Serial.print(cal ? F("Calibration") : F("Frequency Sweep"));
@@ -412,6 +517,17 @@ void printCSVHeader(bool cal) {
     Serial.println(F("i,\t\tf (Hz),\t\tR (Ohm),\tX (Ohm),\t|Z| (Ohm),\tθ (Degrees),\tG,\t\t\tTheta (Degrees)"));
 }
 
+/**
+ * Prints complex impedance measurement result entry of comma-separated value
+ * (CSV) format to serial console. Also compatible with tab-separated value
+ * (TSV) format.
+ * 
+ * @param iter iteration number
+ * @param real complex impedance real counterpart
+ * @param imag complex impedance imaginary counterpart
+ * @param gain calibration gain factor used for corrected impedance calculation
+ * @param phaseShift phase shift used for corrected phase angle calculation
+ */
 void printCSVLine(uint8_t iter, int32_t real, int32_t imag,
                   float gain, float phaseShift) {
     Serial.print(iter + 1);                         Serial.print(F(",\t\t"));   // iteration
@@ -424,12 +540,19 @@ void printCSVLine(uint8_t iter, int32_t real, int32_t imag,
     Serial.println(phaseShift * 180 / PI, 4);                                   // phase shift in degrees (calibration)
 }
 
+/**
+ * Prints table footer for impedance table data.
+ * @param i number of measurements performed
+ */
 void printCSVFooter(uint8_t i) {
     Serial.print(F("Performed "));
     Serial.print(i);
     Serial.println(F(" measurements.\n"));
 }
 
+/**
+ * Displays a command list for interaction with ATmega328P via serial console.
+ */
 void showCommands() {
     Serial.println(F("COMMNAD\t\tDESCRIPTION"));
     Serial.println(F("- temp\t\tMeasure AD5933 temperature."));
@@ -439,6 +562,9 @@ void showCommands() {
     Serial.println(F("- stim\t\tOutput pulsatile stimulation"));
 }
 
+/**
+ * Initiates timer for heavy tasks if timing feature is enabled.
+ */
 void startTimer() {
     Serial.println(F("Working..."));
 #if TIMING
@@ -446,6 +572,9 @@ void startTimer() {
 #endif
 }
 
+/**
+ * Stops timer after heavy tasks and prints timing if timing feature is enabled.
+ */
 uint32_t stopTimer() {
 #if TIMING
     uint32_t work = millis() - lastMillis;
