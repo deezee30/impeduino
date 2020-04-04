@@ -467,13 +467,11 @@ bool stimulate(uint32_t frequency, float duration, float dutyCycle,
         }
     }
 
-#if DEBUG
     Serial.print(F("Stimulated "));
     Serial.print(count);
     Serial.print(F(" out of "));
     Serial.print(fin);
     Serial.println(F(" cycles"));
-#endif
 
     return true;
 }
