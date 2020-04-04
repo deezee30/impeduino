@@ -75,7 +75,7 @@
 #define STATUS_ERROR                0b11111111              // operation unsuccessful / unknown status
 
 // Loggers and debuggers
-#define DEBUG                       false                   // keep false unless debugging
+#define DEBUG                       true                   // keep false unless debugging
 #define TIMING                      true                    // records and prints timing of heavy operations
 
 // AD5933 Library class

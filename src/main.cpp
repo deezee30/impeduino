@@ -10,7 +10,8 @@
 #include "AD5933.h"
 #include "Wire.h"
 
-#define STIM_OUT 13 // PWM LED
+#define STIM_OUT               13               // PWM LED used for monophasic stimulation
+#define STIM_PHASE_UPDATE_TICK 10               // Default minimum amount of microseconds for PWM phase update tick
 
 // AD5933 program parameters
 const float     FREQ_START  = 10000.F;          // linear frequency sweep start (Hz) [5 kHz < f < 100 kHz]
@@ -20,8 +21,9 @@ const uint16_t  REF_RESIST  = 2700;             // resistance used during calibr
 const uint8_t   SWEEP_NUM   = 1;                // sweep each point multiple times, for increased accuracy
 // PWM stimulation parameters
 const uint32_t  STIM_FREQ   = 10000;            // stimulation pulse frequency (Hz)
-const float     STIM_LENGTH = 0.500F;           // total duration of stimulation signal (s)
-const float     STIM_POWER  = 0.5;              // PWM duty cycle of the stimulation signal
+const float     STIM_LENGTH = 3.F;              // total duration of stimulation signal (s)
+const float     STIM_POWER  = 0.02;             // PWM duty cycle of the stimulation signal. For a system outputting
+                                                // a HIGH of 5 V, a duty cycle of 0.02 approximates 100 mV mean output
 
 // Variables for internal use
 bool            cache       = false;            // whether or not to store frequency sweep data
@@ -45,8 +47,8 @@ bool frequencySweep(uint8_t n,                  // perform a frequency sweep and
 bool frequencySweep(uint8_t n,                  // similar as above, but each point gets measured once
                     bool calibration,           
                     bool print);
-bool stimulate(uint32_t, float, float);         // stimulate neurons via PWM with frequency, duration and duty cycle
-bool stimulate(float, float, float);            // stimulate neurons via PWM with high, low and overall durations
+bool stimulate(uint32_t, float,                 // stimulate neurons via PWM with frequency, duration, duty cycle and
+               float, uint8_t);                 // minimum pulse width update phase tick
 float complexMagnitude(float, float);           // computes impedance magnitude from real and imaginary components
 float complexPhase(float, float);               // computes impedance phase angle from real and imaginary components
 float complexReal(float, float);                // computes real component from impedance magnitude and phase angle
@@ -85,8 +87,8 @@ void setup() {
           AD5933::setNumberIncrements(INC_NUM) &&
           AD5933::setPGAGain(CTRL_PGA_GAIN_X1) &&
           AD5933::setSettlingCycles(15, NUM_ST_CYCLES_DEFAULT))) {
-        Serial.println(F("Failed in initialization!"));
-        while (true) continue;
+        //Serial.println(F("Failed in initialization!"));
+        //while (true) continue;
     }
 
     // Decide whether or not to store the swept impedance data.
@@ -224,7 +226,7 @@ void loop() {
             startTimer();
 
             // Stimulate material with default parameters
-            if (!stimulate(STIM_FREQ, STIM_LENGTH, STIM_POWER)) {
+            if (!stimulate(STIM_FREQ, STIM_LENGTH, STIM_POWER, STIM_PHASE_UPDATE_TICK)) {
                 Serial.println(F("Stimulation failed. Use different parameters."));
                 return;
             }
@@ -372,87 +374,105 @@ bool frequencySweep(uint8_t n, uint8_t avgNum, bool calibration, bool print) {
 }
 
 /**
- * Initiates a Pulse Width Modulation (PWM) signal to stimulate tissue. Wired to
- * @code{STIM_OUT} to produce a digital signal.
+ * Initiates a monophasic Pulse Width Modulation (PWM) signal to stimulate
+ * tissue. Wired to @code{STIM_OUT} to produce a digital signal.
  * 
  * The duty cycle can be represented as the ratio of high to low duration
- * portions of PWN signal.
+ * portions of PWM signal.
  * 
- * Processed in microseconds, so timings are accurate to the nearest microsecond. 
+ * Processed in microseconds, so timings are accurate to the nearest microsecond.
+ * Pulse width modulation phase checking and updating is limited to at most,
+ * once per @param phaseUpdateTick. The low pulse width is assumed to be this
+ * value. The crystal/oscillator may not operate fast enough to process such
+ * tiny PWM timings on target, so this value must not be too small. Similarly,
+ * must be considerably below the period of the pulsation to get an accurate
+ * analog-like result.
  * 
- * @param frequency frequency of signal in Hz. Max. 1 MHz
- * @param duration  total stimulation length in seconds
- * @param dutyCycle ratio of durations of pin state high to low during a single
- *                  cycle, such that [0 < dutyCycle < 1]. Default is 0.5
+ * @param frequency       frequency of signal in Hz. Max. 1 MHz
+ * @param duration        total stimulation length in seconds
+ * @param dutyCycle       ratio of durations of pin state high to low during a
+ *                        single cycle, i.e. [0 < dutyCycle < 1]
+ * @param phaseUpdateTick smallest amount of microseconds to wait before
+ *                        checking for an update to stimulation PWM phase
+ *                        change, default: @code{STIM_PHASE_UPDATE_TICK}
  * @return @code{true} if successful, @code{false} if not
  * @see stimulate(float, float, duration) for alternative inputs
  */
-bool stimulate(uint32_t frequency, float duration, float dutyCycle = 0.5) {
+bool stimulate(uint32_t frequency, float duration, float dutyCycle,
+               uint8_t phaseUpdateTick = STIM_PHASE_UPDATE_TICK) {
     if (dutyCycle < 0 || dutyCycle > 1) return false;
     if (frequency > 1E6) return false; // Allow max. 1 MHz frequency
 
     // Convert duty cycle to absolute durations of high and low voltage output
     // The period of the pulse is the sum of high and low state lengths
     float period = 1.F / frequency;
-    return stimulate(dutyCycle * period, (1 - dutyCycle) * period, duration);
-}
+    float hi = dutyCycle * period;
+    float lo = (1 - dutyCycle) * period;
 
-/**
- * Initiates a Pulse Width Modulation (PWM) signal to stimulate tissue. Wired to
- * @code{STIM_OUT} to produce a digital signal.
- * 
- * The duty cycle can be represented as the ratio of high to low duration
- * portions of PWN signal.
- * 
- * Processed in microseconds, so timings are accurate to the nearest microsecond.
- * Maximum @param high and @param low values set to 4294 seconds so as to avoid
- * microsecond overflow.
- * 
- * @param high     duration of pin state set to high, in seconds. Max. 4294 s
- * @param low      duration of pin state set to low, in seconds. Max. 4294 s
- * @param duration total stimulation length in seconds
- * @return @code{true} if successful, @code{false} if not
- */
-bool stimulate(float high, float low, float duration) {
     // Max. pulse width of 4294 seconds to avoid future microsecond overflow
-    if (high > 4294 || low > 4294) return false;
-    if (high < 0 || low < 0 || duration <= 0) return false;
+    if (hi > 4294 || lo > 4294) return false;
+    if (hi < 0 || lo < 0 || duration <= 0) return false;
 
     // Number of pulses to generate
-    uint32_t fin = floor(duration / (high + low));
+    uint32_t fin = floor(duration / (hi + lo));
 
-    // Convert high and low timings to micros
-    uint32_t highMicros = floor(high * 1E6);
-    uint32_t lowMicros = floor(low * 1E6);
+    // Convert timings to micros
+    uint32_t hiMicros       = floor(1E6 * hi);
+    uint32_t loMicros       = floor(1E6 * lo);
+    uint32_t durationMicros = floor(1E6 * duration);
 
-#if DEBUG
-    Serial.print(F("Stimulating for "));
-    Serial.print(fin);
-    Serial.println(F(" pulses..."));
+    // High pulse width assumed to be the smallest possible loop tick
+    uint32_t pwmHi = phaseUpdateTick;
+    // Low pulse width assumed to the remaining time until pulse period ends
+    uint32_t pwmLo = phaseUpdateTick * (1 / dutyCycle - 1);
 
-    Serial.print(F("[ "));
-#endif
+    uint32_t start = micros();
+    uint32_t previous = start - phaseUpdateTick;
+    uint32_t current;
 
-    uint32_t i = 0;
-    while (i++ < fin) {
-        // High
-        digitalWrite(STIM_OUT, HIGH);
-        delayMicroseconds(highMicros);
+    uint32_t count = 0; // Counter used for reliability and functionality analysis
 
-        // Low
-        digitalWrite(STIM_OUT, LOW);
-        delayMicroseconds(lowMicros);
+    // Begin with a high pulse phase
+    bool hiPhase = false;
 
-#if DEBUG
-        // Update progress at 10% intervals
-        if (fmod(i, 0.1 * fin) == 0) {
-            Serial.print(F("="));
+    // Stimulate until duration expires
+    while ((current = micros()) - start < durationMicros) {
+        // Stimulation phase update tick
+        if (current - previous < phaseUpdateTick)
+            continue;
+        
+        if (!hiPhase && current - previous >= loMicros) {
+            // If low pulse phase ends, switch to high pulse phase (PWM)
+            hiPhase = true;
+            
+            while (micros() - current < hiMicros) {
+                // High
+                digitalWrite(STIM_OUT, HIGH);
+                delayMicroseconds(pwmHi);
+
+                // Low
+                digitalWrite(STIM_OUT, LOW);
+                delayMicroseconds(pwmLo);
+            }
+
+            // Reset last known phase stopwatch
+            previous = current;
+        } else if (hiPhase && current - previous >= hiMicros) {
+            // If high pulse phase ends, switch to low pulse phase (0 V)
+            hiPhase = false;
+            digitalWrite(STIM_OUT, LOW);
+            // Reset last known phase stopwatch
+            previous = current;
+            count++;
         }
-#endif
     }
 
 #if DEBUG
-    Serial.println(F(" ]"));
+    Serial.print(F("Stimulated "));
+    Serial.print(count);
+    Serial.print(F(" out of "));
+    Serial.print(fin);
+    Serial.println(F(" cycles"));
 #endif
 
     return true;
