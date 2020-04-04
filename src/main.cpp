@@ -11,16 +11,16 @@
 #include "Wire.h"
 
 #define STIM_OUT               13               // PWM LED used for monophasic stimulation
-#define STIM_PHASE_UPDATE_TICK 10               // Default minimum amount of microseconds for PWM phase update tick
+#define STIM_PHASE_UPDATE_TICK 1               // Default minimum amount of microseconds for PWM phase update tick
 
 // AD5933 program parameters
 const float     FREQ_START  = 10000.F;          // linear frequency sweep start (Hz) [5 kHz < f < 100 kHz]
 const float     FREQ_INC    = 1000.F;           // distance between successive frequency points (Hz)
 const uint8_t   INC_NUM     = 71;               // number of increments along the sweep [< 511]
-const uint16_t  REF_RESIST  = 2700;             // resistance used during calibration (Ohms)
+const uint16_t  REF_RESIST  = 3900;             // resistance used during calibration (Ohms)
 const uint8_t   SWEEP_NUM   = 1;                // sweep each point multiple times, for increased accuracy
 // PWM stimulation parameters
-const uint32_t  STIM_FREQ   = 10000;            // stimulation pulse frequency (Hz)
+const uint32_t  STIM_FREQ   = 5000;             // stimulation pulse frequency (Hz)
 const float     STIM_LENGTH = 3.F;              // total duration of stimulation signal (s)
 const float     STIM_POWER  = 0.02;             // PWM duty cycle of the stimulation signal. For a system outputting
                                                 // a HIGH of 5 V, a duty cycle of 0.02 approximates 100 mV mean output
