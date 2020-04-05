@@ -87,8 +87,8 @@ void setup() {
           AD5933::setNumberIncrements(INC_NUM) &&
           AD5933::setPGAGain(CTRL_PGA_GAIN_X1) &&
           AD5933::setSettlingCycles(15, NUM_ST_CYCLES_DEFAULT))) {
-        //Serial.println(F("Failed in initialization!"));
-        //while (true) continue;
+        Serial.println(F("Failed in initialization!"));
+        while (true) continue;
     }
 
     // Decide whether or not to store the swept impedance data.
